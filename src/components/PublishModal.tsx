@@ -1,0 +1,339 @@
+import React, { useState } from 'react';
+import {
+  Share2,
+  Download,
+  Printer,
+  Copy,
+  Check,
+  Globe,
+  FileCode,
+  FileSpreadsheet,
+  FileText,
+  Eye,
+  X,
+  Sparkles
+} from 'lucide-react';
+import { ChartConfig, Dataset, PublishedDashboard } from '../types/data';
+import { exportToCSV, exportToJSON } from '../utils/csvParser';
+import { generateAutomatedInsights } from '../utils/dataAnalysis';
+
+interface PublishModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  dataset: Dataset;
+  charts: ChartConfig[];
+  onEnterPresentation: () => void;
+}
+
+export const PublishModal: React.FC<PublishModalProps> = ({
+  isOpen,
+  onClose,
+  dataset,
+  charts,
+  onEnterPresentation,
+}) => {
+  const [publishedUrl, setPublishedUrl] = useState<string>('');
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedEmbed, setCopiedEmbed] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  if (!isOpen) return null;
+
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const shareLink = publishedUrl || `${currentOrigin}?view=published&id=${dataset.id}`;
+  const embedCode = `<iframe src="${shareLink}" width="100%" height="650" frameborder="0"></iframe>`;
+
+  const handlePublishWeb = async () => {
+    setIsPublishing(true);
+
+    const publishedPayload: PublishedDashboard = {
+      id: dataset.id,
+      title: `${dataset.name} Dashboard`,
+      description: `Interactive analytics and visualizations generated from ${dataset.totalRows.toLocaleString()} rows.`,
+      publishedAt: new Date().toISOString(),
+      datasetName: dataset.name,
+      totalRows: dataset.totalRows,
+      totalColumns: dataset.columns.length,
+      charts,
+      kpis: [
+        { title: 'Total Records', value: dataset.totalRows.toLocaleString() },
+        { title: 'Columns', value: dataset.columns.length },
+      ],
+      insights: generateAutomatedInsights(dataset),
+      dataSnippet: dataset.data.slice(0, 50),
+      columns: dataset.columns,
+    };
+
+    try {
+      const response = await fetch('/api/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(publishedPayload),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setPublishedUrl(`${currentOrigin}?view=published&id=${result.id || dataset.id}`);
+      } else {
+        setPublishedUrl(`${currentOrigin}?view=published&id=${dataset.id}`);
+      }
+    } catch {
+      // Local fallback
+      setPublishedUrl(`${currentOrigin}?view=published&id=${dataset.id}`);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const copyToClipboard = (text: string, type: 'link' | 'embed') => {
+    navigator.clipboard.writeText(text);
+    if (type === 'link') {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } else {
+      setCopiedEmbed(true);
+      setTimeout(() => setCopiedEmbed(false), 2000);
+    }
+  };
+
+  const handleDownloadHTMLReport = () => {
+    const numericCols = dataset.columns.filter((c) => c.type === 'number');
+    const insights = generateAutomatedInsights(dataset);
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${dataset.name} - Executive Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; color: #1e293b; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+    .meta { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 30px; }
+    .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+    .kpi-title { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; }
+    .kpi-val { font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 4px; }
+    .section-title { font-size: 16px; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin: 30px 0 16px; }
+    .insight-card { background: #fff; border-left: 4px solid #4f46e5; padding: 12px 16px; margin-bottom: 12px; border-radius: 4px; background: #fdfdfe; border: 1px solid #e2e8f0; border-left-width: 4px; }
+    .insight-title { font-weight: 600; font-size: 13px; color: #1e1b4b; }
+    .insight-desc { font-size: 12px; color: #475569; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 12px; }
+    th, td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+    th { background: #f8fafc; font-weight: 600; }
+    tr:nth-child(even) { background: #fafafa; }
+  </style>
+</head>
+<body>
+  <h1>${dataset.name} - Executive Analytics</h1>
+  <div class="meta">Generated by DataStudio CSV on ${new Date().toLocaleDateString()} · ${dataset.totalRows.toLocaleString()} Records · ${dataset.columns.length} Fields</div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-title">Total Records</div>
+      <div class="kpi-val">${dataset.totalRows.toLocaleString()}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Columns</div>
+      <div class="kpi-val">${dataset.columns.length} Fields</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">${numericCols[0]?.name || 'Primary Metric'}</div>
+      <div class="kpi-val">${numericCols[0]?.sum?.toLocaleString() || 'N/A'}</div>
+    </div>
+  </div>
+
+  <div class="section-title">Automated AI Insights & Findings</div>
+  ${insights.map(i => `
+    <div class="insight-card">
+      <div class="insight-title">${i.title}</div>
+      <div class="insight-desc">${i.description}</div>
+    </div>
+  `).join('')}
+
+  <div class="section-title">Data Sample (First 15 Rows)</div>
+  <table>
+    <thead>
+      <tr>
+        ${dataset.columns.slice(0, 7).map(c => `<th>${c.name}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>
+      ${dataset.data.slice(0, 15).map(r => `
+        <tr>
+          ${dataset.columns.slice(0, 7).map(c => `<td>${r[c.key] ?? ''}</td>`).join('')}
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${dataset.name}-report.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-slate-200 overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <Share2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Publish & Export Dashboard</h3>
+              <p className="text-xs text-slate-500">Share with stakeholders or export offline formats</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-6 space-y-6">
+          {/* SECTION 1: Web Publishing & Sharing */}
+          <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-xs font-bold text-slate-900">Publish Interactive Dashboard</h4>
+              </div>
+              <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                Ready to Publish
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Generate a shareable live web link for "{dataset.name}" including all active charts, key metric indicators, and automated insights.
+            </p>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={shareLink}
+                className="flex-1 px-3 py-2 text-xs font-mono bg-white border border-slate-200 rounded-lg text-slate-600"
+              />
+              <button
+                onClick={() => copyToClipboard(shareLink, 'link')}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
+              </button>
+            </div>
+
+            {/* Embed Snippet */}
+            <div className="pt-2 border-t border-indigo-100/60">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-medium text-slate-500">Embed iFrame Widget</span>
+                <button
+                  onClick={() => copyToClipboard(embedCode, 'embed')}
+                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                  {copiedEmbed ? 'Embed Code Copied!' : 'Copy Embed Code'}
+                </button>
+              </div>
+              <input
+                type="text"
+                readOnly
+                value={embedCode}
+                className="w-full px-2.5 py-1 text-[11px] font-mono bg-white border border-slate-200 rounded text-slate-500"
+              />
+            </div>
+          </div>
+
+          {/* SECTION 2: Presentation & Print View */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => {
+                onClose();
+                onEnterPresentation();
+              }}
+              className="p-3.5 border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-xl transition text-left flex items-start gap-3 group"
+            >
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                <Eye className="w-4 h-4" />
+              </div>
+              <div>
+                <h5 className="text-xs font-semibold text-slate-900">Presentation Mode</h5>
+                <p className="text-[11px] text-slate-500 mt-0.5">Clean executive presentation layout</p>
+              </div>
+            </button>
+
+            <button
+              onClick={handlePrint}
+              className="p-3.5 border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-xl transition text-left flex items-start gap-3 group"
+            >
+              <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                <Printer className="w-4 h-4" />
+              </div>
+              <div>
+                <h5 className="text-xs font-semibold text-slate-900">Print / PDF Export</h5>
+                <p className="text-[11px] text-slate-500 mt-0.5">Formatted executive one-pager</p>
+              </div>
+            </button>
+          </div>
+
+          {/* SECTION 3: Data File Downloads */}
+          <div>
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+              Export Processed Data Files
+            </h4>
+            <div className="grid grid-cols-3 gap-2.5">
+              <button
+                onClick={() => exportToCSV(dataset.data, `${dataset.name}-export.csv`)}
+                className="p-3 border border-slate-200 hover:border-slate-300 rounded-xl bg-white hover:bg-slate-50 transition flex flex-col items-center gap-1.5 text-center"
+              >
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                <span className="text-xs font-semibold text-slate-800">Cleaned CSV</span>
+                <span className="text-[10px] text-slate-400 font-mono">RFC 4180</span>
+              </button>
+
+              <button
+                onClick={() => exportToJSON(dataset.data, `${dataset.name}-export.json`)}
+                className="p-3 border border-slate-200 hover:border-slate-300 rounded-xl bg-white hover:bg-slate-50 transition flex flex-col items-center gap-1.5 text-center"
+              >
+                <FileCode className="w-5 h-5 text-blue-600" />
+                <span className="text-xs font-semibold text-slate-800">JSON Object</span>
+                <span className="text-[10px] text-slate-400 font-mono">Structured</span>
+              </button>
+
+              <button
+                onClick={handleDownloadHTMLReport}
+                className="p-3 border border-slate-200 hover:border-slate-300 rounded-xl bg-white hover:bg-slate-50 transition flex flex-col items-center gap-1.5 text-center"
+              >
+                <FileText className="w-5 h-5 text-violet-600" />
+                <span className="text-xs font-semibold text-slate-800">HTML Report</span>
+                <span className="text-[10px] text-slate-400 font-mono">Standalone</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-medium rounded-xl transition"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

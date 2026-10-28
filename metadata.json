@@ -1,0 +1,6 @@
+{
+  "name": "DataStudio CSV - Analytics, Visualization & Publishing",
+  "description": "Upload, inspect, clean, visualize, and publish interactive data dashboards and AI insights from CSV datasets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
